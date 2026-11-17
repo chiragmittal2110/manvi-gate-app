@@ -40,7 +40,7 @@ final class EscPos {
                         if (x < w) {
                             int c = px[base + x];
                             int lum = (((c >> 16) & 0xFF) * 299 + ((c >> 8) & 0xFF) * 587 + (c & 0xFF) * 114) / 1000;
-                            if (lum < 140) v |= (0x80 >> bit);
+                            if (lum < 190) v |= (0x80 >> bit); // generous: thin / grey text still comes out solid black
                         }
                     }
                     out.write(v);

@@ -269,13 +269,14 @@ public class MainActivity extends Activity {
                     OutputStream os = sock.getOutputStream();
                     int off = 0;
                     while (off < data.length) {
-                        int n = Math.min(1024, data.length - off);
+                        // small chunks with a pause: the printer then prints slowly, which makes the slip dark like the test print
+                        int n = Math.min(256, data.length - off);
                         os.write(data, off, n);
                         off += n;
                         os.flush();
-                        Thread.sleep(15);
+                        Thread.sleep(25);
                     }
-                    Thread.sleep(1200); // let the printer finish receiving before the link is closed
+                    Thread.sleep(2500); // let the printer finish receiving before the link is closed
                     done(true, "");
                 } catch (Exception e) {
                     done(false, e.getMessage() == null ? e.toString() : e.getMessage());
