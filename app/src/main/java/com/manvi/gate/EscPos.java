@@ -2,6 +2,9 @@ package com.manvi.gate;
 
 import android.graphics.Bitmap;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.ByteArrayOutputStream;
 
 /** Turns a bitmap into ESC/POS raster commands for an 80 mm receipt printer. */
@@ -47,6 +50,31 @@ final class EscPos {
                 }
             }
         }
+        out.write(0x1B); out.write(0x64); out.write(0x04);                // ESC d 4  feed 4 lines
+        out.write(0x1D); out.write(0x56); out.write(0x42); out.write(0x00); // GS V 66 0  feed and cut
+        return out.toByteArray();
+    }
+
+    /** Prints plain text lines with the printer's own built-in Font A (12x24), the same font as its self-test page.
+     *  ops: [{"s":"text","b":0|1,"z":0|1|17}]  b = bold, z = GS ! size byte (0 normal, 1 double height, 17 double width+height). */
+    static byte[] fromText(JSONArray ops) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(0x1B); out.write(0x40);                 // ESC @  initialise
+        out.write(0x1B); out.write(0x74); out.write(0x00); // ESC t 0  code page CP437
+        out.write(0x1B); out.write(0x4D); out.write(0x00); // ESC M 0  Font A (12x24)
+        out.write(0x1B); out.write(0x32);                 // ESC 2  default line spacing
+        for (int i = 0; i < ops.length(); i++) {
+            JSONObject o = ops.getJSONObject(i);
+            String s = o.optString("s", "");
+            int b = o.optInt("b", 0), z = o.optInt("z", 0);
+            out.write(0x1B); out.write(0x45); out.write(b);   // ESC E  bold
+            out.write(0x1D); out.write(0x21); out.write(z);   // GS !   size
+            byte[] bytes = s.getBytes("ISO-8859-1");
+            for (int k = 0; k < bytes.length; k++) { int c = bytes[k] & 0xFF; out.write(c >= 0x20 && c <= 0x7E ? c : '?'); }
+            out.write(0x0A);
+        }
+        out.write(0x1B); out.write(0x45); out.write(0x00);
+        out.write(0x1D); out.write(0x21); out.write(0x00);
         out.write(0x1B); out.write(0x64); out.write(0x04);                // ESC d 4  feed 4 lines
         out.write(0x1D); out.write(0x56); out.write(0x42); out.write(0x00); // GS V 66 0  feed and cut
         return out.toByteArray();

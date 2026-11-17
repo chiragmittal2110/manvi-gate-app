@@ -239,6 +239,12 @@ public class MainActivity extends Activity {
         sendAsync(EscPos.fromBitmap(bmp));
     }
 
+    void printTextAsync(String json) {
+        try {
+            sendAsync(EscPos.fromText(new org.json.JSONArray(json)));
+        } catch (Exception e) { fail("Print error: " + e.getMessage()); }
+    }
+
     void printPngAsync(String b64) {
         try {
             int comma = b64.indexOf(',');

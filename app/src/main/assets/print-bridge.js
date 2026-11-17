@@ -115,9 +115,77 @@
     return out.toDataURL("image/png");
   }
 
+
+  // ---------- native text mode: the printer's own Font A (12 x 24 dots = 48 characters across 80 mm) ----------
+  var COLS = 48;
+  function ascii(s) { return String(s == null ? "" : s).replace(/[\u00B7\u2022]/g, "/").replace(/[\u2013\u2014]/g, "-").replace(/\s+/g, " ").trim().replace(/[^\x20-\x7E]/g, "?"); }
+  function wrapN(s, n) {
+    s = ascii(s); if (!s) return [""];
+    var words = s.split(" "), lines = [], cur = "";
+    for (var i = 0; i < words.length; i++) {
+      var w = words[i];
+      while (w.length > n) { if (cur) { lines.push(cur); cur = ""; } lines.push(w.slice(0, n)); w = w.slice(n); }
+      if (!cur) cur = w; else if ((cur + " " + w).length <= n) cur += " " + w; else { lines.push(cur); cur = w; }
+    }
+    lines.push(cur); return lines;
+  }
+  function padR(s, n) { while (s.length < n) s += " "; return s; }
+  function padL(s, n) { while (s.length < n) s = " " + s; return s; }
+  function center(s, n) { var l = Math.max(0, Math.floor((n - s.length) / 2)); return padR(padL(s, l + s.length), n).replace(/\s+$/, ""); }
+
+  function slipToText(pc) {
+    var ops = [];
+    function add(s, b, z) { ops.push({ s: s, b: b ? 1 : 0, z: z || 0 }); }
+    var rule = new Array(COLS + 1).join("-");
+    var kids = pc.children;
+    for (var i = 0; i < kids.length; i++) {
+      var el = kids[i], cl = (el.className || "").split(" "), tag = el.tagName;
+      if (cl.indexOf("ph") >= 0) {                 // company name, large
+        wrapN(el.textContent, 24).forEach(function (t) { add(center(t, 24), true, 0x11); });
+      } else if (cl.indexOf("pt") >= 0) {          // title
+        wrapN(el.textContent, COLS).forEach(function (t) { add(center(t, COLS), false, 0); });
+      } else if (cl.indexOf("pl") >= 0) {
+        add(rule, false, 0);
+      } else if (cl.indexOf("prow") >= 0) {
+        var big = cl.indexOf("big2") >= 0, cols = COLS;
+        var lab = ascii(el.children[0] ? el.children[0].textContent : "");
+        var val = ascii(el.children[1] ? el.children[1].textContent : "");
+        if (lab.length + 1 + val.length <= cols) add(lab + padL(val, cols - lab.length), big || false, big ? 0x01 : 0);
+        else { add(lab, big, big ? 0x01 : 0); wrapN(val, cols).forEach(function (t) { add(padL(t, cols), true, 0); }); }
+      } else if (tag === "TABLE") {
+        var w1 = 17, w2 = 24, w3 = 5;             // 17 + 1 + 24 + 1 + 5 = 48
+        var rows = el.querySelectorAll("tr");
+        for (var r = 0; r < rows.length; r++) {
+          var row = rows[r], cells = row.children, head = !!row.querySelector("th");
+          if (cells.length === 1) { wrapN(cells[0].textContent, COLS).forEach(function (t) { add(t, true, 0); }); continue; }
+          var a = wrapN(cells[0].textContent, w1), b = wrapN(cells[1].textContent, w2), q = ascii(cells[2] ? cells[2].textContent : "");
+          var n = Math.max(a.length, b.length);
+          for (var k = 0; k < n; k++) add(padR(a[k] || "", w1) + " " + padR(b[k] || "", w2) + " " + (k === 0 ? padL(q, w3) : ""), head, 0);
+          if (head) add(rule, false, 0);
+        }
+      } else if (cl.indexOf("sig") >= 0) {
+        add("", false, 0); add("", false, 0); add("", false, 0); add(rule, false, 0);
+        wrapN(el.textContent, COLS).forEach(function (t) { add(center(t, COLS), false, 0); });
+      } else if (cl.indexOf("pf") >= 0) {
+        add("", false, 0);
+        wrapN(el.textContent, COLS).forEach(function (t) { add(center(t, COLS), false, 0); });
+      } else if (el.textContent) {
+        wrapN(el.textContent, COLS).forEach(function (t) { add(t, false, 0); });
+      }
+    }
+    return ops;
+  }
+  window.__slipToText = slipToText;   // handy for testing
+
   window.__slipToPng = slipToPng;   // handy for testing
   window.print = function () {
     try {
+      var area = document.getElementById("printarea");
+      var pc = area && area.querySelector(".pc");
+      if (pc && window.AndroidPrinter.printText) {   // preferred: the printer's own font, full speed, always dark
+        window.AndroidPrinter.printText(JSON.stringify(slipToText(pc)));
+        return;
+      }
       var png = slipToPng();
       if (!png) return;
       window.AndroidPrinter.printPng(png.split(",")[1]);
