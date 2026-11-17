@@ -262,7 +262,7 @@ public class MainActivity extends Activity {
                 try {
                     BluetoothAdapter ad = BluetoothAdapter.getDefaultAdapter();
                     if (ad == null || !btAllowed()) throw new Exception("Bluetooth is not allowed");
-                    ad.cancelDiscovery();
+                    // no cancelDiscovery(): we never scan (only paired printers), and it needs the extra Bluetooth-scan permission on Android 12+
                     BluetoothDevice dev = ad.getRemoteDevice(addr);
                     sock = dev.createRfcommSocketToServiceRecord(SPP);
                     sock.connect();
