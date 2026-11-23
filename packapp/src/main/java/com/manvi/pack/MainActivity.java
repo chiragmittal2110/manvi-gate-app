@@ -77,6 +77,9 @@ public class MainActivity extends AppCompatActivity {
     private FrameLayout root;
     private TextView hint;
     private LinearLayout sheet;
+    private View frameView;
+    private Button typeBtn;
+    private View topBar;
 
     // current form state
     private String curBarcode = "";
@@ -136,6 +139,7 @@ public class MainActivity extends AppCompatActivity {
         frame.setBackground(fg);
         FrameLayout.LayoutParams fp = new FrameLayout.LayoutParams(dp(280), dp(180), Gravity.CENTER);
         fp.bottomMargin = dp(60);
+        frameView = frame;
         root.addView(frame, fp);
 
         // top bar
@@ -153,6 +157,7 @@ public class MainActivity extends AppCompatActivity {
         who.setTextColor(Color.parseColor("#BFD0E0")); who.setTextSize(14);
         who.setOnClickListener(v -> askName());
         top.addView(who);
+        topBar = top;
         root.addView(top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
         hint = new TextView(this);
@@ -165,6 +170,7 @@ public class MainActivity extends AppCompatActivity {
         root.addView(hint, hp);
 
         Button type = bigButton("Type barcode", Color.parseColor("#33FFFFFF"));
+        typeBtn = type;
         type.setOnClickListener(v -> typeBarcode());
         FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
         tp.setMargins(dp(16), 0, dp(16), dp(20));
@@ -173,25 +179,31 @@ public class MainActivity extends AppCompatActivity {
         sheet = new LinearLayout(this);
         sheet.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable sg = new GradientDrawable();
-        sg.setColor(Color.WHITE); sg.setCornerRadii(new float[]{dp(22), dp(22), dp(22), dp(22), 0, 0, 0, 0});
+        sg.setColor(Color.WHITE);
         sheet.setBackground(sg);
         sheet.setPadding(dp(18), dp(18), dp(18), dp(18));
         sheet.setVisibility(View.GONE);
         sheet.setClickable(true);
         ScrollView sv = new ScrollView(this);
-        sv.setFillViewport(false);
+        sv.setFillViewport(true);
+        sv.setBackgroundColor(Color.WHITE);
         sv.addView(sheet);
         sv.setVisibility(View.GONE);
         sv.setTag("sheetScroll");
-        FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+        FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.BOTTOM);
+        sp.topMargin = dp(84);
         root.addView(sv, sp);
     }
 
     private View sheetScroll() { return root.findViewWithTag("sheetScroll"); }
 
-    private void showSheet() { sheet.setVisibility(View.VISIBLE); sheetScroll().setVisibility(View.VISIBLE); }
+    private void showSheet() {
+        sheet.setVisibility(View.VISIBLE); sheetScroll().setVisibility(View.VISIBLE);
+        hint.setVisibility(View.INVISIBLE); typeBtn.setVisibility(View.INVISIBLE); frameView.setVisibility(View.INVISIBLE);
+    }
     private void hideSheet() {
         sheet.removeAllViews(); sheet.setVisibility(View.GONE); sheetScroll().setVisibility(View.GONE);
+        hint.setVisibility(View.VISIBLE); typeBtn.setVisibility(View.VISIBLE); frameView.setVisibility(View.VISIBLE);
         hideKeyboard();
     }
     private void hideKeyboard() {
