@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, pack-app]
   workflow_dispatch:
 
 jobs:
@@ -23,3 +23,7 @@ jobs:
         with:
           name: manvi-gate-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manvi-pack-apk
+          path: packapp/build/outputs/apk/debug/packapp-debug.apk

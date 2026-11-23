@@ -11,3 +11,8 @@ Android kiosk app for the Manvi Fabricator Gate Receiving page.
 ## Getting the APK
 Every push to `main` is built by GitHub Actions. Open the **Actions** tab, open the latest run,
 and download **manvi-gate-apk** from the Artifacts section (a zip containing `app-debug.apk`).
+
+## Manvi Pack Box app (`packapp/`)
+Separate Android app (`com.manvi.pack`). Opens straight into the camera: scan a box barcode, type the style and
+the quantity, save. It uses the same Manvi Hub `api` function as the Hub's Pack Box page, so stock is identical.
+The build also produces **manvi-pack-apk** (`packapp-debug.apk`) in the Actions artifacts.
