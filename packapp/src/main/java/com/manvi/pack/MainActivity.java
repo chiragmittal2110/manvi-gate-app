@@ -1,6 +1,7 @@
 package com.manvi.pack;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -60,7 +61,8 @@ import java.util.concurrent.Executors;
  * It talks to the same Manvi Hub "api" function that the Hub's Pack Box page uses, so stock stays identical.
  */
 public class MainActivity extends AppCompatActivity {
-    private static final String API = "https://avtjiroinquslddliyyi.supabase.co/functions/v1/api";
+    private static final String FUNCS = "https://avtjiroinquslddliyyi.supabase.co/functions/v1/";
+    private static final String API = FUNCS + "api";
     private static final int NAVY = Color.parseColor("#0F2A43");
     private static final int GREEN = Color.parseColor("#0B7A3E");
     private static final int RED = Color.parseColor("#B3261E");
@@ -87,6 +89,9 @@ public class MainActivity extends AppCompatActivity {
     private final List<String> lastSuggestions = new ArrayList<String>();
     private int searchSeq = 0;
     private Runnable pendingSearch;
+    private boolean editing = false;          // true while editing an already-packed box
+    private JSONObject editBox = null;
+    private Button oldBtn;                    // "Old style" button (style not in the system)
 
     @Override
     protected void onCreate(Bundle b) {
@@ -282,10 +287,11 @@ public class MainActivity extends AppCompatActivity {
         code.requestFocus();
     }
 
-    private void resume() { hideSheet(); paused = false; hint.setText("Point the camera at the box barcode"); }
+    private void resume() { editing = false; editBox = null; hideSheet(); paused = false; hint.setText("Point the camera at the box barcode"); }
 
     private void onBarcode(final String code) {
         paused = true;
+        editing = false; editBox = null;
         curBarcode = code;
         sheet.removeAllViews();
         sheet.addView(label(code, 22, true, NAVY));
@@ -303,14 +309,24 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void showAlreadyPacked(JSONObject box) {
+    private void showAlreadyPacked(final JSONObject box) {
         sheet.removeAllViews();
         sheet.addView(label(curBarcode, 22, true, NAVY));
-        TextView t = label("Already packed", 20, true, RED);
+        TextView t = label("This box is already registered", 20, true, RED);
         sheet.addView(t);
         String packedAt = box.optString("packed_at", "");
         if (packedAt.length() >= 10) packedAt = packedAt.substring(0, 10);
         sheet.addView(label(box.optString("style_number", "") + "  ·  " + box.optInt("pieces", 0) + " pcs\n" + box.optString("status", "") + (packedAt.isEmpty() ? "" : "  ·  " + packedAt), 18, false, Color.BLACK));
+        if ("PACKED".equals(box.optString("status", ""))) {
+            sheet.addView(label("Do you want to edit it?", 18, true, Color.BLACK));
+            Button edit = bigButton("Edit this box", GREEN);
+            LinearLayout.LayoutParams lpe = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lpe.topMargin = dp(14);
+            sheet.addView(edit, lpe);
+            edit.setOnClickListener(v -> { editing = true; editBox = box; showForm(); });
+        } else {
+            sheet.addView(label("It can no longer be edited here (use the Manvi Hub).", 16, false, RED));
+        }
         Button next = bigButton("Scan next box", NAVY);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.topMargin = dp(14);
@@ -333,7 +349,7 @@ public class MainActivity extends AppCompatActivity {
         sheet.removeAllViews();
         pickedStyle = "";
         lastSuggestions.clear();
-        sheet.addView(label("New box · " + curBarcode, 18, true, NAVY));
+        sheet.addView(label((editing ? "Edit box · " : "New box · ") + curBarcode, 18, true, NAVY));
 
         sheet.addView(label("Style", 14, false, Color.DKGRAY));
         final EditText style = field("Type the style number", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
@@ -349,10 +365,16 @@ public class MainActivity extends AppCompatActivity {
         final TextView msg = label("", 16, true, RED);
         sheet.addView(msg);
 
+        oldBtn = bigButton("Old style (not in system)", Color.parseColor("#B26A00"));
+        oldBtn.setVisibility(View.GONE);
+        LinearLayout.LayoutParams lpo = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lpo.topMargin = dp(8);
+        sheet.addView(oldBtn, lpo);
+
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         Button cancel = bigButton("Cancel", Color.GRAY);
-        final Button save = bigButton("Save box", GREEN);
+        final Button save = bigButton(editing ? "Save changes" : "Save box", GREEN);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         lp.setMargins(0, dp(14), dp(8), 0);
         LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2);
@@ -363,6 +385,9 @@ public class MainActivity extends AppCompatActivity {
         // prefill with the last box (boxes of one style usually come together)
         String ls = prefs.getString("lastStyle", "");
         int lq = prefs.getInt("lastQty", 0);
+        if (editing && editBox != null) {
+            ls = editBox.optString("style_number", ""); lq = editBox.optInt("pieces", 0);
+        }
         if (!ls.isEmpty()) { style.setText(ls); pickedStyle = ls; style.setSelection(ls.length()); }
         if (lq > 0) qty.setText(String.valueOf(lq));
 
@@ -373,6 +398,7 @@ public class MainActivity extends AppCompatActivity {
                 String t = e.toString().trim();
                 if (!t.equals(pickedStyle)) pickedStyle = "";
                 msg.setText("");
+                if (oldBtn != null) oldBtn.setVisibility(View.GONE);
                 scheduleSearch(t, sugg, style, qty);
             }
         });
@@ -389,9 +415,27 @@ public class MainActivity extends AppCompatActivity {
             if (use.isEmpty()) {
                 for (String s : lastSuggestions) if (norm(s).equals(norm)) { use = s; break; }
             }
-            if (use.isEmpty()) { msg.setText("Style not found. Tap the matching style from the list."); return; }
+            if (use.isEmpty()) {
+                if (canOldStyle()) { msg.setText("Style not found. Tap the matching style from the list, or tap Old style."); oldBtn.setVisibility(View.VISIBLE); }
+                else msg.setText("Style not found in the system. Tap the matching style from the list.");
+                return;
+            }
             save.setEnabled(false);
-            doSave(use, pcs, msg, save);
+            if (editing) doEdit(use, pcs, false, msg, save); else doSave(use, pcs, msg, save);
+        });
+        oldBtn.setOnClickListener(v -> {
+            final String typed = style.getText().toString().trim().toUpperCase();
+            int pcs0 = 0;
+            try { pcs0 = Integer.parseInt(qty.getText().toString().trim()); } catch (Exception ignored) {}
+            if (norm(typed).length() < 2) { msg.setText("Enter the style."); return; }
+            if (pcs0 < 1) { msg.setText("Enter the quantity (1 or more)."); return; }
+            final int pcs = pcs0;
+            new AlertDialog.Builder(this)
+                .setTitle("Register old style?")
+                .setMessage(typed + "\n\nThis style is not in the system. It will be registered as an old style and this box of " + pcs + " pcs counted as opening stock.\n\nCheck the style number carefully.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Yes, register", (d, w) -> { save.setEnabled(false); oldBtn.setEnabled(false); if (editing) doEdit(typed, pcs, true, msg, save); else doOld(typed, pcs, msg, save); })
+                .show();
         });
         showSheet();
         if (prefs.getString("lastStyle", "").isEmpty()) style.requestFocus(); else qty.requestFocus();
@@ -414,6 +458,9 @@ public class MainActivity extends AppCompatActivity {
                     if (seq != searchSeq) return;
                     lastSuggestions.clear(); lastSuggestions.addAll(names);
                     sugg.removeAllViews();
+                    boolean exact = false;
+                    for (String n : names) if (norm(n).equals(norm(text))) exact = true;
+                    if (oldBtn != null) oldBtn.setVisibility(!exact && norm(text).length() >= 2 && pickedStyle.isEmpty() && canOldStyle() ? View.VISIBLE : View.GONE);
                     for (final String n : names) {
                         if (n.equals(pickedStyle)) continue;
                         TextView tv = label(n, 20, true, NAVY);
@@ -437,6 +484,56 @@ public class MainActivity extends AppCompatActivity {
         ui.postDelayed(pendingSearch, 250);
     }
 
+    private boolean canOldStyle() {
+        return !editing || (editBox != null && "OLD_STYLE".equals(editBox.optString("source", "")));
+    }
+
+    private String who() { return prefs.getString("name", "").isEmpty() ? "Pack app" : prefs.getString("name", ""); }
+
+    private void doOld(final String styleNumber, final int pcs, final TextView msg, final Button save) {
+        final String code = curBarcode;
+        net.execute(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("barcode", code); body.put("styleNumber", styleNumber); body.put("pieces", pcs); body.put("packedBy", who());
+                final JSONObject r = call("POST", FUNCS + "packold", body);
+                ui.post(() -> {
+                    if (r.optBoolean("success", false)) {
+                        prefs.edit().putString("lastStyle", styleNumber).putInt("lastQty", pcs).apply();
+                        showDone("✔ Old style box saved", styleNumber, pcs);
+                    } else {
+                        msg.setText(r.optString("message", "Could not save. Try again."));
+                        save.setEnabled(true); if (oldBtn != null) oldBtn.setEnabled(true);
+                    }
+                });
+            } catch (Exception e) {
+                ui.post(() -> { msg.setText("No internet connection. Nothing was saved. Try again."); save.setEnabled(true); if (oldBtn != null) oldBtn.setEnabled(true); });
+            }
+        });
+    }
+
+    private void doEdit(final String styleNumber, final int pcs, final boolean oldStyle, final TextView msg, final Button save) {
+        final String code = curBarcode;
+        net.execute(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("barcode", code); body.put("styleNumber", styleNumber); body.put("pieces", pcs);
+                body.put("editedBy", who()); body.put("oldStyle", oldStyle);
+                final JSONObject r = call("POST", FUNCS + "boxedit", body);
+                ui.post(() -> {
+                    if (r.optBoolean("success", false)) {
+                        showDone("✔ Box updated", styleNumber, pcs);
+                    } else {
+                        msg.setText(r.optString("message", "Could not save. Try again."));
+                        save.setEnabled(true); if (oldBtn != null) oldBtn.setEnabled(true);
+                    }
+                });
+            } catch (Exception e) {
+                ui.post(() -> { msg.setText("No internet connection. Nothing was changed. Try again."); save.setEnabled(true); if (oldBtn != null) oldBtn.setEnabled(true); });
+            }
+        });
+    }
+
     private void doSave(final String styleNumber, final int pcs, final TextView msg, final Button save) {
         final String code = curBarcode;
         net.execute(() -> {
@@ -450,7 +547,7 @@ public class MainActivity extends AppCompatActivity {
                 ui.post(() -> {
                     if (r.optBoolean("success", false)) {
                         prefs.edit().putString("lastStyle", styleNumber).putInt("lastQty", pcs).apply();
-                        showDone(styleNumber, pcs);
+                        showDone("✔ Box saved", styleNumber, pcs);
                     } else {
                         msg.setText(r.optString("message", "Could not save. Try again."));
                         save.setEnabled(true);
@@ -462,9 +559,9 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void showDone(String style, int pcs) {
+    private void showDone(String title, String style, int pcs) {
         sheet.removeAllViews();
-        sheet.addView(label("✔ Box saved", 24, true, GREEN));
+        sheet.addView(label(title, 24, true, GREEN));
         sheet.addView(label(style + "  ·  " + pcs + " pcs", 20, true, Color.BLACK));
         hideKeyboard();
         ui.postDelayed(this::resume, 1300);
@@ -493,11 +590,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ---------------------------------------------------------------- network
-    private JSONObject get(String path) throws Exception { return call("GET", path, null); }
-    private JSONObject post(String path, JSONObject body) throws Exception { return call("POST", path, body); }
+    private JSONObject get(String path) throws Exception { return call("GET", API + path, null); }
+    private JSONObject post(String path, JSONObject body) throws Exception { return call("POST", API + path, body); }
 
-    private JSONObject call(String method, String path, JSONObject body) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(API + path).openConnection();
+    private JSONObject call(String method, String url, JSONObject body) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setConnectTimeout(12000); c.setReadTimeout(20000);
         c.setRequestMethod(method);
         c.setRequestProperty("Accept", "application/json");
